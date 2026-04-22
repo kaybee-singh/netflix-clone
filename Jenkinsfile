@@ -36,7 +36,7 @@ pipeline {
                 script {
                     echo "Sideloading image into Kind nodes (fixing the 'not found' error)..."
                     // This moves the image from the EC2 host into the Kind cluster nodes
-                    sh "kind load docker-image ${IMAGE_NAME} --name ${CLUSTER_NAME}"
+                    sh "sudo kind load docker-image ${IMAGE_NAME} --name ${CLUSTER_NAME}"
                 }
             }
         }
@@ -45,11 +45,11 @@ pipeline {
             steps {
                 script {
                     echo "Applying Deployment and Service..."
-                    sh "kubectl apply -f deployment.yaml"
+                    sh "sudo kubectl apply -f deployment.yaml"
                     
                     echo "Restarting deployment to show rolling update..."
                     // This ensures K8s picks up the newly loaded 'local' image
-                    sh "kubectl rollout restart deployment/netflix-deployment"
+                    sh "sudo kubectl rollout restart deployment/netflix-deployment"
                 }
             }
         }
@@ -57,14 +57,14 @@ pipeline {
         stage('Verify Rollout') {
             steps {
                 echo "Monitoring the Wow Moment..."
-                sh "kubectl rollout status deployment/netflix-deployment"
+                sh "sudo kubectl rollout status deployment/netflix-deployment"
             }
         }
     }
 
     post {
         always {
-            sh "kubectl get pods"
+            sh "sudo kubectl get pods"
         }
     }
 }
