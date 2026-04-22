@@ -26,7 +26,7 @@ pipeline {
                 script {
                     echo "Building Docker Image locally..."
                     // We build with a local tag to avoid registry dependencies
-                    sh "docker build -t ${IMAGE_NAME} -f Containerfile ."
+                    sh "sudo docker build -t ${IMAGE_NAME} -f Containerfile ."
                 }
             }
         }
