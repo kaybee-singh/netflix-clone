@@ -17,7 +17,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                // Ensure this URL is correct for your repo
+                // Ensure your GitHub URL is correct
                 git branch: 'main', url: 'https://github.com/kaybee-singh/netflix-clone/'
             }
         }
@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker Image locally on EC2..."
-                    // Building with sudo as required
+                    // Using Containerfile as per your setup
                     sh "sudo docker build -t ${IMAGE_NAME} -f Containerfile ."
                 }
             }
@@ -44,15 +44,13 @@ pipeline {
         stage('Kubernetes Deploy') {
             steps {
                 script {
-                    echo "Generating temporary Kubeconfig file..."
-                    // We save the config to a file in the workspace
-                    sh "sudo kind get kubeconfig --name ${CLUSTER_NAME} --internal > jenkins-kube.config"
-                    // Make it readable for the next command
+                    echo "Generating Kubeconfig (Host-Accessible)..."
+                    // Removed --internal to force the use of 127.0.0.1 instead of the container name
+                    sh "sudo kind get kubeconfig --name ${CLUSTER_NAME} > jenkins-kube.config"
                     sh "sudo chmod 666 jenkins-kube.config"
 
                     echo "Applying Deployment and Service..."
-                    // We use --kubeconfig FLAG to bypass the Jenkins port conflict (8080)
-                    // We use --validate=false to skip the OpenAPI check that causes the HTML error
+                    // Using the flag ensures we hit Kind and NOT Jenkins port 8080
                     sh """
                         sudo kubectl apply -f deployment.yaml --kubeconfig=jenkins-kube.config --validate=false
                         sudo kubectl rollout restart deployment/netflix-deployment --kubeconfig=jenkins-kube.config
@@ -65,7 +63,6 @@ pipeline {
             steps {
                 script {
                     echo "Monitoring the Rolling Update..."
-                    // Using the flag here as well for consistency
                     sh "sudo kubectl rollout status deployment/netflix-deployment --kubeconfig=jenkins-kube.config"
                 }
             }
@@ -75,10 +72,10 @@ pipeline {
     post {
         always {
             script {
-                echo "Final Pod Status Check..."
-                // Check pods one last time using the local config
+                echo "Final Pod Status..."
+                // Use the local config for the final status check
                 sh "sudo kubectl get pods --kubeconfig=jenkins-kube.config"
-                // Cleanup the config file
+                // Delete the temporary config for safety
                 sh "rm -f jenkins-kube.config"
             }
         }
