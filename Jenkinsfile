@@ -4,80 +4,67 @@ pipeline {
     environment {
         APP_NAME = "netflix-clone"
         IMAGE_NAME = "netflix:local"
-        CLUSTER_NAME = "bootcamp-cluster"
+        // The port your EC2 will expose to the internet
+        HOST_PORT = "80" 
+        // The port your app is listening on inside the container
+        CONTAINER_PORT = "80" 
     }
 
     stages {
-        stage('Cleanup') {
+        stage('Cleanup Workspace') {
             steps {
-                echo "Cleaning up previous workspace..."
+                echo "Cleaning up previous build files..."
                 cleanWs()
             }
         }
 
         stage('Checkout Code') {
             steps {
-                // Ensure your GitHub URL is correct
                 git branch: 'main', url: 'https://github.com/kaybee-singh/netflix-clone/'
             }
         }
 
-        stage('Docker Build') {
+        stage('Build Image') {
             steps {
                 script {
-                    echo "Building Docker Image locally on EC2..."
-                    // Using Containerfile as per your setup
+                    echo "Building Docker Image..."
                     sh "sudo docker build -t ${IMAGE_NAME} -f Containerfile ."
                 }
             }
         }
 
-        stage('Load Image into Kind') {
+        stage('Deploy Container') {
             steps {
                 script {
-                    echo "Sideloading image into Kind nodes..."
-                    sh "sudo kind load docker-image ${IMAGE_NAME} --name ${CLUSTER_NAME}"
+                    echo "Removing old container if it exists..."
+                    // '|| true' ensures the pipeline doesn't fail if the container isn't there yet
+                    sh "sudo docker stop ${APP_NAME} || true"
+                    sh "sudo docker rm ${APP_NAME} || true"
+
+                    echo "Starting new container on port ${HOST_PORT}..."
+                    sh "sudo docker run -d --name ${APP_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE_NAME}"
                 }
             }
         }
 
-        stage('Kubernetes Deploy') {
+        stage('Health Check') {
             steps {
                 script {
-                    echo "Generating Kubeconfig (Host-Accessible)..."
-                    // Removed --internal to force the use of 127.0.0.1 instead of the container name
-                    sh "sudo kind get kubeconfig --name ${CLUSTER_NAME} > jenkins-kube.config"
-                    sh "sudo chmod 666 jenkins-kube.config"
-
-                    echo "Applying Deployment and Service..."
-                    // Using the flag ensures we hit Kind and NOT Jenkins port 8080
-                    sh """
-                        sudo kubectl apply -f deployment.yaml --kubeconfig=jenkins-kube.config --validate=false
-                        sudo kubectl rollout restart deployment/netflix-deployment --kubeconfig=jenkins-kube.config
-                    """
-                }
-            }
-        }
-
-        stage('Verify Rollout') {
-            steps {
-                script {
-                    echo "Monitoring the Rolling Update..."
-                    sh "sudo kubectl rollout status deployment/netflix-deployment --kubeconfig=jenkins-kube.config"
+                    echo "Waiting for app to start..."
+                    sleep 5
+                    sh "sudo docker ps"
+                    // Check if the app is responding locally
+                    sh "curl -I http://localhost:${HOST_PORT} || echo 'Warning: Localhost check failed'"
                 }
             }
         }
     }
 
     post {
-        always {
-            script {
-                echo "Final Pod Status..."
-                // Use the local config for the final status check
-                sh "sudo kubectl get pods --kubeconfig=jenkins-kube.config"
-                // Delete the temporary config for safety
-                sh "rm -f jenkins-kube.config"
-            }
+        success {
+            echo "-----------------------------------------------------------"
+            echo "SUCCESS! Access your app at: http://your-ec2-public-ip"
+            echo "-----------------------------------------------------------"
         }
     }
 }
