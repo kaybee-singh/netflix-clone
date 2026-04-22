@@ -8,25 +8,25 @@ pipeline {
     }
 
     stages {
-        stage('Cleanup Workspace') {
+        stage('Cleanup') {
             steps {
+                echo "Cleaning up previous workspace..."
                 cleanWs()
             }
         }
 
         stage('Checkout Code') {
             steps {
-                // Replace with your actual repo URL
-                git branch: 'main', url: 'https://github.com/kaybee-singh/netflix-clone'
+                // This clones your repo into the Jenkins workspace
+                git branch: 'main', url: 'https://github.com/kaybee-singh/netflix-clone/'
             }
         }
 
         stage('Docker Build') {
             steps {
                 script {
-                    echo "Building Docker Image locally..."
-                    // We build with a local tag to avoid registry dependencies
-                    sh "sudo docker build -t ${IMAGE_NAME} -f Containerfile ."
+                    echo "Building Docker Image locally on EC2..."
+                    sh "docker build -t ${IMAGE_NAME} ."
                 }
             }
         }
@@ -34,43 +34,37 @@ pipeline {
         stage('Load Image into Kind') {
             steps {
                 script {
-                    echo "Loading image into Kind nodes... (No internet needed)"
-                    // This is the most robust part of the demo
+                    echo "Sideloading image into Kind nodes (fixing the 'not found' error)..."
+                    // This moves the image from the EC2 host into the Kind cluster nodes
                     sh "kind load docker-image ${IMAGE_NAME} --name ${CLUSTER_NAME}"
                 }
             }
         }
 
-        stage('Deploy/Update K8s') {
+        stage('Kubernetes Deploy') {
             steps {
                 script {
-                    echo "Triggering Rolling Update..."
-                    // First time: apply the manifest. Subsequent times: update image
-                    sh "kubectl apply f deployment.yaml"
+                    echo "Applying Deployment and Service..."
+                    sh "kubectl apply -f deployment.yaml"
                     
-                    // Force a restart to show the rolling update visually even if 
-                    // the image tag remains 'latest' or 'local'
+                    echo "Restarting deployment to show rolling update..."
+                    // This ensures K8s picks up the newly loaded 'local' image
                     sh "kubectl rollout restart deployment/netflix-deployment"
                 }
             }
         }
 
-        stage('Verify Health') {
+        stage('Verify Rollout') {
             steps {
-                script {
-                    echo "Waiting for pods to stabilize..."
-                    sh "kubectl rollout status deployment/netflix-deployment"
-                }
+                echo "Monitoring the Wow Moment..."
+                sh "kubectl rollout status deployment/netflix-deployment"
             }
         }
     }
 
     post {
-        success {
-            echo "Demo Successful! Refresh your browser now."
-        }
-        failure {
-            echo "Something went wrong. Check 'kubectl get pods' or Jenkins logs."
+        always {
+            sh "kubectl get pods"
         }
     }
 }
