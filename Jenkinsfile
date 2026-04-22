@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker Image locally on EC2..."
-                    sh "docker build -t ${IMAGE_NAME} ."
+                    sh "sudo docker build -t ${IMAGE_NAME} -f Containerfile ."
                 }
             }
         }
